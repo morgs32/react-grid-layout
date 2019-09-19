@@ -115,7 +115,7 @@ produce a grid with three items where:
 - users will be able to freely drag and resize item `c`
 
 ```js
-import GridLayout from 'react-grid-layout';
+import GridLayout from '@stackshirts/react-grid-layout/types/index';
 
 class MyFirstGrid extends React.Component {
   render() {
@@ -139,7 +139,7 @@ class MyFirstGrid extends React.Component {
 You may also choose to set layout properties directly on the children:
 
 ```js
-import GridLayout from 'react-grid-layout';
+import GridLayout from '@stackshirts/react-grid-layout/types/index';
 
 class MyFirstGrid extends React.Component {
   render() {
@@ -164,7 +164,7 @@ excludes `React`, so it must be otherwise available in your application, either 
 To make RGL responsive, use the `<ResponsiveReactGridLayout>` element:
 
 ```js
-import { Responsive as ResponsiveGridLayout } from 'react-grid-layout';
+import { Responsive as ResponsiveGridLayout } from '@stackshirts/react-grid-layout/types/index';
 
 class MyResponsiveGrid extends React.Component {
   render() {
@@ -201,7 +201,7 @@ positions on drag events. In simple cases a HOC `WidthProvider` can be used to a
 width upon initialization and window resize events.
 
 ```js
-import { Responsive, WidthProvider } from 'react-grid-layout';
+import { Responsive, WidthProvider } from '@stackshirts/react-grid-layout/types/index';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 

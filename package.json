@@ -1,8 +1,9 @@
 {
-  "name": "@stackshirts/react-grid-layout",
-  "version": "0.17.1",
+  "name": "react-grid-layout",
+  "version": "0.18.0",
   "description": "A draggable and resizable grid layout with responsive breakpoints, for React.",
   "main": "index.js",
+  "types": "./types",
   "scripts": {
     "lint": "make lint",
     "test": "make test",
