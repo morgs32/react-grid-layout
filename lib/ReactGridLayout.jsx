@@ -10,6 +10,7 @@ import {
   cloneLayoutItem,
   compact,
   getLayoutItem,
+  getLayoutItemIndex,
   moveElement,
   synchronizeLayoutWithChildren,
   getAllCollisions,
@@ -35,7 +36,8 @@ import type {
   DragOverEvent,
   Layout,
   DroppingPosition,
-  LayoutItem
+  LayoutItem,
+  DragApiRefObject
 } from "./utils";
 
 import type { PositionParams } from "./calculateUtils";
@@ -47,6 +49,7 @@ type State = {
   oldDragItem: ?LayoutItem,
   oldLayout: ?Layout,
   oldResizeItem: ?LayoutItem,
+  activeResizeItem: ?LayoutItem,
   droppingDOMNode: ?ReactElement<any>,
   droppingPosition?: DroppingPosition,
   // Mirrored props
@@ -99,6 +102,7 @@ export default class ReactGridLayout extends React.Component<Props, State> {
     verticalCompact: true,
     compactType: "vertical",
     preventCollision: false,
+    dragApiRef: React.createRef<DragApiRefObject>(),
     droppingItem: {
       i: "__dropping-elem__",
       h: 1,
@@ -127,6 +131,7 @@ export default class ReactGridLayout extends React.Component<Props, State> {
     oldDragItem: null,
     oldLayout: null,
     oldResizeItem: null,
+    activeResizeItem: null,
     droppingDOMNode: null,
     children: []
   };
@@ -145,7 +150,92 @@ export default class ReactGridLayout extends React.Component<Props, State> {
     ]);
   }
 
+  currentContainerHeight = 0;
+
   componentDidMount() {
+    let dragInfo = null;
+
+    this.props.dragApiRef.current = {
+      dragIn: ({ layoutItem, node, event, position }) => {
+        dragInfo = { layoutItem, node };
+        const { w, h } = layoutItem;
+        const { layout } = this.state;
+        const { margin, containerPadding } = this.props;
+        const { x, y } = calcXY(
+          {
+            containerWidth: this.props.width,
+            cols: this.props.cols,
+            margin,
+            containerPadding: containerPadding || margin,
+            rowHeight: this.props.rowHeight,
+            maxRows: this.props.maxRows
+          },
+          position.top,
+          position.left,
+          w,
+          h
+        );
+        if (!this.state.activeDrag) {
+          const l = { ...layoutItem, x, y };
+          this.setState({
+            oldDragItem: l,
+            oldLayout: layout,
+            layout: [...this.state.layout, l],
+            activeDrag: l
+          });
+          this.props.onDragStart(layout, l, l, null, event, node);
+        } else {
+          this.onDrag(layoutItem.i, x, y, {
+            e: event,
+            node,
+            newPosition: position
+          });
+        }
+      },
+
+      dragOut: () => {
+        if (dragInfo) {
+          const { layoutItem } = dragInfo;
+          this.setState((state, props) => ({
+            layout: compact(
+              state.layout.filter(d => d.i !== layoutItem.i),
+              compactType(this.props),
+              props.cols
+            ),
+            activeDrag: null
+          }));
+        }
+      },
+
+      stop: ({ event, position }) => {
+        if (dragInfo) {
+          const { layoutItem, node } = dragInfo;
+          const { w, h } = layoutItem;
+          const { margin, containerPadding } = this.props;
+          const { x, y } = calcXY(
+            {
+              containerWidth: this.props.width,
+              cols: this.props.cols,
+              margin,
+              containerPadding: containerPadding || margin,
+              rowHeight: this.props.rowHeight,
+              maxRows: this.props.maxRows
+            },
+            position.top,
+            position.left,
+            w,
+            h
+          );
+          this.onDragStop(layoutItem.i, x, y, {
+            e: event,
+            node,
+            newPosition: position
+          });
+          dragInfo = null;
+        }
+      }
+    };
+
     this.setState({ mounted: true });
     // Possibly call back with layout on mount. This should be done after correcting the layout width
     // to ensure we don't rerender with the wrong width.
@@ -202,6 +292,7 @@ export default class ReactGridLayout extends React.Component<Props, State> {
       // handle changes properly, performance will increase.
       this.props.children !== nextProps.children ||
       !fastRGLPropsEqual(this.props, nextProps, isEqual) ||
+      this.state.mounted !== nextState.mounted ||
       this.state.activeDrag !== nextState.activeDrag ||
       this.state.droppingPosition !== nextState.droppingPosition
     );
@@ -226,12 +317,15 @@ export default class ReactGridLayout extends React.Component<Props, State> {
     const containerPaddingY = this.props.containerPadding
       ? this.props.containerPadding[1]
       : this.props.margin[1];
-    return (
+    const height =
       nbRow * this.props.rowHeight +
       (nbRow - 1) * this.props.margin[1] +
-      containerPaddingY * 2 +
-      "px"
-    );
+      containerPaddingY * 2;
+
+    if (height > this.currentContainerHeight) {
+      this.currentContainerHeight = height;
+    }
+    return this.currentContainerHeight + "px";
   }
 
   /**
@@ -272,12 +366,12 @@ export default class ReactGridLayout extends React.Component<Props, State> {
 
     // Create placeholder (display only)
     var placeholder = {
+      i: i,
       w: l.w,
       h: l.h,
       x: l.x,
       y: l.y,
-      placeholder: true,
-      i: i
+      placeholder: true
     };
 
     // Move the element to the dragged location.
@@ -333,6 +427,8 @@ export default class ReactGridLayout extends React.Component<Props, State> {
 
     this.props.onDragStop(layout, oldDragItem, l, null, e, node);
 
+    this.currentContainerHeight = 0;
+
     // Set state
     const newLayout = compact(layout, compactType(this.props), cols);
     const { oldLayout } = this.state;
@@ -370,8 +466,10 @@ export default class ReactGridLayout extends React.Component<Props, State> {
   onResize(i: string, w: number, h: number, { e, node }: GridResizeEvent) {
     const { layout, oldResizeItem } = this.state;
     const { cols, preventCollision } = this.props;
-    const l: ?LayoutItem = getLayoutItem(layout, i);
-    if (!l) return;
+    const layoutItem: ?LayoutItem = getLayoutItem(layout, i);
+    if (!layoutItem) return;
+
+    const l = cloneLayoutItem(layoutItem);
 
     // Something like quad tree should be used
     // to find collisions faster
@@ -418,12 +516,14 @@ export default class ReactGridLayout extends React.Component<Props, State> {
     // Re-compact the layout and set the drag placeholder.
     this.setState({
       layout: compact(layout, compactType(this.props), cols),
+      // The item was cloned to prevent prop mutation. The layout will be updated in onResizeStop.
+      activeResizeItem: l,
       activeDrag: placeholder
     });
   }
 
   onResizeStop(i: string, w: number, h: number, { e, node }: GridResizeEvent) {
-    const { layout, oldResizeItem } = this.state;
+    const { layout, activeResizeItem, oldResizeItem } = this.state;
     const { cols } = this.props;
     var l = getLayoutItem(layout, i);
 
@@ -431,6 +531,18 @@ export default class ReactGridLayout extends React.Component<Props, State> {
 
     // Set state
     const newLayout = compact(layout, compactType(this.props), cols);
+
+    if (activeResizeItem) {
+      const activeResizeItemIndex = getLayoutItemIndex(
+        newLayout,
+        activeResizeItem.i
+      );
+      if (activeResizeItemIndex >= 0) {
+        // Update the active item
+        newLayout[activeResizeItemIndex] = activeResizeItem;
+      }
+    }
+
     const { oldLayout } = this.state;
     this.setState({
       activeDrag: null,
