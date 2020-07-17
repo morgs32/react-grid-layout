@@ -145,6 +145,8 @@ export default class ReactGridLayout extends React.Component<Props, State> {
     ]);
   }
 
+  currentContainerHeight = 0;
+
   componentDidMount() {
     this.setState({ mounted: true });
     // Possibly call back with layout on mount. This should be done after correcting the layout width
@@ -226,12 +228,15 @@ export default class ReactGridLayout extends React.Component<Props, State> {
     const containerPaddingY = this.props.containerPadding
       ? this.props.containerPadding[1]
       : this.props.margin[1];
-    return (
+    const height =
       nbRow * this.props.rowHeight +
       (nbRow - 1) * this.props.margin[1] +
-      containerPaddingY * 2 +
-      "px"
-    );
+      containerPaddingY * 2;
+
+    if (height > this.currentContainerHeight) {
+      this.currentContainerHeight = height;
+    }
+    return this.currentContainerHeight + "px";
   }
 
   /**
@@ -332,6 +337,8 @@ export default class ReactGridLayout extends React.Component<Props, State> {
     );
 
     this.props.onDragStop(layout, oldDragItem, l, null, e, node);
+
+    this.currentContainerHeight = 0;
 
     // Set state
     const newLayout = compact(layout, compactType(this.props), cols);
